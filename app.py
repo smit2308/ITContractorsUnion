@@ -350,12 +350,9 @@ def api_send_email():
     if _already_sent(to_email):
         return jsonify({"status": "skipped", "reason": "already sent"})
 
-    # ── resume (required) ─────────────────────────────────────────────────────
+    # ── resume (optional) ─────────────────────────────────────────────────────
     resume_path = _get_active_resume_path()
-    if not resume_path:
-        return jsonify({"status": "error",
-                        "reason": "No resume selected. Add one in Resume Manager."}), 400
-    if not os.path.isfile(resume_path):
+    if resume_path and not os.path.isfile(resume_path):
         return jsonify({"status": "error",
                         "reason": "Active resume file not found on disk. Re-upload it."}), 400
 
@@ -384,15 +381,16 @@ def api_send_email():
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
-    with open(resume_path, "rb") as f:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(f.read())
-    encoders.encode_base64(part)
-    part.add_header(
-        "Content-Disposition",
-        f'attachment; filename="{os.path.basename(resume_path)}"',
-    )
-    msg.attach(part)
+    if resume_path and os.path.isfile(resume_path):
+        with open(resume_path, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f'attachment; filename="{os.path.basename(resume_path)}"',
+        )
+        msg.attach(part)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as smtp:

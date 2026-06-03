@@ -258,6 +258,21 @@ a.email-link:hover{text-decoration:underline}
           &#10003; Password saved &mdash; leave blank to keep current
         </div>
       </div>
+      <div style="border-top:1px solid #e2e8f0;margin:16px 0 14px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Your Details (used in email signature)</div>
+      <div class="form-row">
+        <label>Your Name</label>
+        <input type="text" id="cfg-sender-name" placeholder="John Smith">
+      </div>
+      <div class="row-2">
+        <div class="form-row">
+          <label>Your Phone</label>
+          <input type="text" id="cfg-sender-phone" placeholder="+1 555 000 0000">
+        </div>
+        <div class="form-row">
+          <label>Your LinkedIn</label>
+          <input type="text" id="cfg-sender-linkedin" placeholder="linkedin.com/in/you">
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('smtp-overlay')">Cancel</button>
@@ -304,7 +319,9 @@ a.email-link:hover{text-decoration:underline}
       <div class="tpl-edit-panel" id="tpl-edit-panel">
         <p style="font-size:12px;color:#64748b;margin-bottom:14px">
           Variables: <code>{name}</code> &nbsp; <code>{company}</code> &nbsp;
-          <code>{role_area}</code> &nbsp; <code>{experience_blurb}</code>
+          <code>{role_area}</code> &nbsp; <code>{role_noun}</code> &nbsp;
+          <code>{experience_blurb}</code> &nbsp; <code>{your_name}</code> &nbsp;
+          <code>{your_phone}</code> &nbsp; <code>{your_linkedin}</code>
         </p>
         <div class="form-row">
           <label>Subject</label>
@@ -386,14 +403,26 @@ a.email-link:hover{text-decoration:underline}
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 
-let currentPage   = 1;
-let totalResults  = 0;
-let selectedLevel = "all";
-let currentRows   = [];
-let pendingJob    = null;
-let sentLog       = {};
+let currentPage    = 1;
+let totalResults   = 0;
+let selectedLevel  = "all";
+let currentRows    = [];
+let pendingJob     = null;
+let sentLog        = {};
+let senderName     = "[Your Name]";
+let senderPhone    = "[Your Phone]";
+let senderLinkedin = "[Your LinkedIn]";
 
 // ── Role blurbs / areas ──────────────────────────────────────────────────────
+
+const ROLE_NOUNS = {
+  "Software Engineer / Developer":  "software engineer",
+  "Full Stack / Web":               "full-stack developer",
+  "Backend / Java / Spring / API":  "backend developer",
+  "Python / AI / ML / GenAI":       "Python/AI engineer",
+  "Data / Analytics / BI":          "data analyst",
+  "Cloud / DevOps":                 "cloud/DevOps engineer",
+};
 
 const ROLE_BLURBS = {
   "Software Engineer / Developer":  "software development with Java, Python, TypeScript, and REST APIs",
@@ -415,21 +444,19 @@ const ROLE_AREAS = {
 
 // ── Default template ─────────────────────────────────────────────────────────
 
-const DEFAULT_SUBJECT  = "Inquiry Regarding Open Positions at {company}";
-const DEFAULT_BODY = `<p>Dear {name},</p>
+const DEFAULT_SUBJECT  = "Junior {role_noun} role — worth a conversation?";
+const DEFAULT_BODY = `<p>Hi {name},</p>
 
-<p>I am writing to inquire about entry-level or junior openings in {role_area} at <strong>{company}</strong>. I understand that under the H-1B Labor Condition Application process, employers are required to make available positions open to domestic applicants, and I would like to be considered for any such opportunities.</p>
+<p>I'm reaching out directly about junior {role_area} openings at <strong>{company}</strong>.</p>
 
-<p>My background includes hands-on experience with {experience_blurb}. I am eager to contribute to your team and grow within the organization.</p>
+<p>My background: {experience_blurb}. I ship, ask good questions, and ramp up fast once I understand the goal.</p>
 
-<p>I have attached my resume for your review. I would greatly appreciate the opportunity to discuss how my skills align with your team's needs. Please let me know a convenient time to connect, or feel free to reply to this email.</p>
+<p>I'd love 15 minutes to learn more about what your team is working on. If there's no opening right now, even a pointer to the right person would mean a lot.</p>
 
-<p>Thank you for your time and consideration.</p>
+<p>Worth a quick call?</p>
 
-<p>Best regards,<br>
-[Your Name]<br>
-[Your Phone]<br>
-[Your LinkedIn]</p>`;
+<p>— {your_name}<br>
+{your_phone} | {your_linkedin}</p>`;
 
 function getTemplate() {
   return {
@@ -478,6 +505,12 @@ async function init() {
   if (cfg.has_password) {
     document.getElementById("cfg-pass-saved").style.display = "";
   }
+  document.getElementById("cfg-sender-name").value     = cfg.sender_name     || "";
+  document.getElementById("cfg-sender-phone").value    = cfg.sender_phone    || "";
+  document.getElementById("cfg-sender-linkedin").value = cfg.sender_linkedin || "";
+  senderName     = cfg.sender_name     || "[Your Name]";
+  senderPhone    = cfg.sender_phone    || "[Your Phone]";
+  senderLinkedin = cfg.sender_linkedin || "[Your LinkedIn]";
 
   await loadResumes();
 }
@@ -630,19 +663,31 @@ function changePage(delta) {
 
 // ── Email generation ──────────────────────────────────────────────────────────
 
+function buildGreetingName(first, last) {
+  const raw = [first, last].filter(Boolean).join(" ").trim();
+  if (!raw) return "Hiring Team";
+  if (raw.includes("/")) return raw.split("/")[0].trim().split(" ")[0];
+  return raw;
+}
+
 function generateEmail(job) {
-  const role       = document.getElementById("role-select").value;
-  const blurb      = ROLE_BLURBS[role]  || "software engineering and technology";
-  const area       = ROLE_AREAS[role]   || "technology";
-  const tpl        = getTemplate();
-  const name       = [job.poc_first, job.poc_last].filter(Boolean).join(" ") || "Hiring Team";
-  const company    = job.employer_name || "your company";
+  const role    = document.getElementById("role-select").value;
+  const blurb   = ROLE_BLURBS[role] || "software engineering and technology";
+  const area    = ROLE_AREAS[role]  || "technology";
+  const noun    = ROLE_NOUNS[role]  || "software engineer";
+  const tpl     = getTemplate();
+  const name    = buildGreetingName(job.poc_first, job.poc_last);
+  const company = job.employer_name || "your company";
 
   const fill = s => s
     .replace(/\{name\}/g, name)
     .replace(/\{company\}/g, company)
     .replace(/\{role_area\}/g, area)
-    .replace(/\{experience_blurb\}/g, blurb);
+    .replace(/\{role_noun\}/g, noun)
+    .replace(/\{experience_blurb\}/g, blurb)
+    .replace(/\{your_name\}/g, senderName)
+    .replace(/\{your_phone\}/g, senderPhone)
+    .replace(/\{your_linkedin\}/g, senderLinkedin);
 
   return { subject: fill(tpl.subject), body: fill(tpl.body) };
 }
@@ -864,10 +909,13 @@ async function saveSmtpConfig() {
   const passVal  = document.getElementById("cfg-pass").value.trim();
 
   const cfg = {
-    from_email: document.getElementById("cfg-from").value,
-    smtp_host:  document.getElementById("cfg-host").value,
-    smtp_port:  parseInt(document.getElementById("cfg-port").value),
-    username:   document.getElementById("cfg-user").value,
+    from_email:      document.getElementById("cfg-from").value,
+    smtp_host:       document.getElementById("cfg-host").value,
+    smtp_port:       parseInt(document.getElementById("cfg-port").value),
+    username:        document.getElementById("cfg-user").value,
+    sender_name:     document.getElementById("cfg-sender-name").value,
+    sender_phone:    document.getElementById("cfg-sender-phone").value,
+    sender_linkedin: document.getElementById("cfg-sender-linkedin").value,
   };
   // only include password if user typed something — otherwise backend keeps existing
   if (passVal) cfg.password = passVal;
@@ -888,6 +936,9 @@ async function saveSmtpConfig() {
     document.getElementById("cfg-pass").value = "";
     document.getElementById("cfg-pass-saved").style.display =
       (passVal || data.has_password) ? "" : "none";
+    senderName     = document.getElementById("cfg-sender-name").value     || "[Your Name]";
+    senderPhone    = document.getElementById("cfg-sender-phone").value    || "[Your Phone]";
+    senderLinkedin = document.getElementById("cfg-sender-linkedin").value || "[Your LinkedIn]";
     setTimeout(() => {
       btn.textContent = "Save";
       btn.style.background = "";
@@ -926,6 +977,7 @@ function renderTemplatePreview() {
   const subject = document.getElementById("template-subject").value;
   const body    = document.getElementById("template-body").value;
 
+  const noun          = ROLE_NOUNS[role] || "software engineer";
   const sampleName    = "Sarah Johnson";
   const sampleCompany = "Acme Technologies";
 
@@ -933,7 +985,11 @@ function renderTemplatePreview() {
     .replace(/\{name\}/g, sampleName)
     .replace(/\{company\}/g, sampleCompany)
     .replace(/\{role_area\}/g, area)
-    .replace(/\{experience_blurb\}/g, blurb);
+    .replace(/\{role_noun\}/g, noun)
+    .replace(/\{experience_blurb\}/g, blurb)
+    .replace(/\{your_name\}/g, senderName !== "[Your Name]" ? senderName : "Your Name")
+    .replace(/\{your_phone\}/g, senderPhone !== "[Your Phone]" ? senderPhone : "555-000-0000")
+    .replace(/\{your_linkedin\}/g, senderLinkedin !== "[Your LinkedIn]" ? senderLinkedin : "linkedin.com/in/you");
 
   const filledSubject = fill(subject);
   const filledBody    = fill(body);
