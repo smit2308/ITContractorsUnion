@@ -106,6 +106,18 @@ a.email-link:hover{text-decoration:underline}
 
 .hint{font-size:11px;color:#94a3b8;margin-top:4px}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── Template modal tabs ── */
+.tpl-tabs{display:flex;gap:0;background:#f1f5f9;border-radius:7px;padding:3px}
+.tpl-tab{flex:1;border:none;background:none;padding:6px 14px;font-size:12px;font-weight:600;color:#64748b;border-radius:5px;cursor:pointer;transition:all .15s}
+.tpl-tab.active{background:#fff;color:#1e293b;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.tpl-edit-panel{}
+.tpl-preview-panel{display:none}
+.email-client-shell{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff}
+.email-client-header{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:12px 16px;font-size:12px;color:#475569;display:flex;flex-direction:column;gap:4px}
+.email-client-header .meta-row{display:flex;gap:8px}
+.email-client-header .meta-label{font-weight:600;color:#94a3b8;width:50px;flex-shrink:0}
+#tpl-preview-frame{width:100%;border:none;min-height:320px;display:block}
 </style>
 </head>
 <body>
@@ -233,26 +245,48 @@ a.email-link:hover{text-decoration:underline}
   <div class="modal wide">
     <div class="modal-header">
       <h2>Email Template</h2>
+      <div class="tpl-tabs">
+        <button class="tpl-tab active" id="tpl-tab-edit" onclick="switchTemplateTab('edit')">Edit</button>
+        <button class="tpl-tab" id="tpl-tab-preview" onclick="switchTemplateTab('preview')">Preview</button>
+      </div>
       <button class="modal-close" onclick="closeModal('template-overlay')">&#215;</button>
     </div>
+
     <div class="modal-body">
-      <p style="font-size:12px;color:#64748b;margin-bottom:14px">
-        Variables: <code>{name}</code> &nbsp; <code>{company}</code> &nbsp;
-        <code>{role_area}</code> &nbsp; <code>{experience_blurb}</code>
-      </p>
-      <div class="form-row">
-        <label>Subject</label>
-        <input type="text" id="template-subject" value="Inquiry Regarding Open Positions at {company}">
+      <!-- Edit panel -->
+      <div class="tpl-edit-panel" id="tpl-edit-panel">
+        <p style="font-size:12px;color:#64748b;margin-bottom:14px">
+          Variables: <code>{name}</code> &nbsp; <code>{company}</code> &nbsp;
+          <code>{role_area}</code> &nbsp; <code>{experience_blurb}</code>
+        </p>
+        <div class="form-row">
+          <label>Subject</label>
+          <input type="text" id="template-subject" value="Inquiry Regarding Open Positions at {company}">
+        </div>
+        <div class="form-row">
+          <label>Body (HTML)</label>
+          <textarea id="template-body"></textarea>
+        </div>
       </div>
-      <div class="form-row">
-        <label>Body (HTML)</label>
-        <textarea id="template-body"></textarea>
+
+      <!-- Preview panel -->
+      <div class="tpl-preview-panel" id="tpl-preview-panel">
+        <div class="email-client-shell">
+          <div class="email-client-header">
+            <div class="meta-row"><span class="meta-label">From</span><span id="preview-from-label">you@gmail.com</span></div>
+            <div class="meta-row"><span class="meta-label">To</span><span>Sarah Johnson &lt;hiring@acmetechnologies.com&gt;</span></div>
+            <div class="meta-row"><span class="meta-label">Subject</span><span id="preview-subject-label" style="font-weight:600;color:#1e293b"></span></div>
+          </div>
+          <iframe id="tpl-preview-frame" sandbox="allow-same-origin"></iframe>
+        </div>
+        <p style="font-size:11px;color:#94a3b8;margin-top:8px">Sample data used — actual sends use the real contact name and company.</p>
       </div>
     </div>
+
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="resetTemplate()">Reset to Default</button>
+      <button class="btn btn-ghost" id="tpl-reset-btn" onclick="resetTemplate()">Reset to Default</button>
       <button class="btn btn-ghost" onclick="closeModal('template-overlay')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+      <button class="btn btn-primary" id="tpl-save-btn" onclick="saveTemplate()">Save Template</button>
     </div>
   </div>
 </div>
@@ -701,7 +735,70 @@ function openTemplateModal() {
   const tpl = getTemplate();
   document.getElementById("template-subject").value = tpl.subject;
   document.getElementById("template-body").value    = tpl.body;
+  switchTemplateTab("edit");
   openModal("template-overlay");
+}
+
+function switchTemplateTab(tab) {
+  const isEdit = tab === "edit";
+  document.getElementById("tpl-edit-panel").style.display    = isEdit ? "" : "none";
+  document.getElementById("tpl-preview-panel").style.display = isEdit ? "none" : "block";
+  document.getElementById("tpl-tab-edit").classList.toggle("active", isEdit);
+  document.getElementById("tpl-tab-preview").classList.toggle("active", !isEdit);
+  document.getElementById("tpl-reset-btn").style.display = isEdit ? "" : "none";
+  document.getElementById("tpl-save-btn").style.display  = isEdit ? "" : "none";
+  if (!isEdit) renderTemplatePreview();
+}
+
+function renderTemplatePreview() {
+  const role    = document.getElementById("role-select").value;
+  const blurb   = ROLE_BLURBS[role] || "software engineering and technology";
+  const area    = ROLE_AREAS[role]  || "technology";
+  const subject = document.getElementById("template-subject").value;
+  const body    = document.getElementById("template-body").value;
+
+  const sampleName    = "Sarah Johnson";
+  const sampleCompany = "Acme Technologies";
+
+  const fill = s => s
+    .replace(/\{name\}/g, sampleName)
+    .replace(/\{company\}/g, sampleCompany)
+    .replace(/\{role_area\}/g, area)
+    .replace(/\{experience_blurb\}/g, blurb);
+
+  const filledSubject = fill(subject);
+  const filledBody    = fill(body);
+
+  // subject line in the mock header
+  document.getElementById("preview-subject-label").textContent = filledSubject;
+
+  // from address from saved config (best-effort)
+  fetch("/api/config").then(r => r.json()).then(cfg => {
+    if (cfg.from_email) document.getElementById("preview-from-label").textContent = cfg.from_email;
+  }).catch(() => {});
+
+  // write rendered HTML into the sandboxed iframe
+  const frame = document.getElementById("tpl-preview-frame");
+  const doc   = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
+           font-size:14px;line-height:1.6;color:#1e293b;padding:20px 24px;margin:0}
+      p{margin:0 0 12px}a{color:#2563eb}
+    </style>
+  </head><body>${filledBody}</body></html>`);
+  doc.close();
+
+  // auto-resize iframe to content height
+  frame.onload = () => {
+    try {
+      frame.style.height = frame.contentDocument.body.scrollHeight + 32 + "px";
+    } catch(_) {}
+  };
+  try {
+    frame.style.height = doc.body.scrollHeight + 32 + "px";
+  } catch(_) {}
 }
 
 function saveTemplate() {
