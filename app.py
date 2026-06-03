@@ -420,20 +420,30 @@ def api_sent():
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     if request.method == "POST":
-        cfg = request.get_json() or {}
+        incoming = request.get_json() or {}
+        # load existing so we can preserve password if not re-supplied
+        existing = {}
+        if CONFIG_FILE.exists():
+            try:
+                with open(CONFIG_FILE) as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+        if "password" not in incoming or not incoming.get("password"):
+            incoming["password"] = existing.get("password", "")
         with open(CONFIG_FILE, "w") as f:
-            json.dump(cfg, f, indent=2)
-        return jsonify({"status": "saved"})
+            json.dump(incoming, f, indent=2)
+        return jsonify({"status": "saved", "has_password": bool(incoming.get("password"))})
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE) as f:
                 cfg = json.load(f)
             safe = {k: v for k, v in cfg.items() if k != "password"}
-            safe["password"] = ""
+            safe["has_password"] = bool(cfg.get("password"))
             return jsonify(safe)
         except Exception:
             pass
-    return jsonify({})
+    return jsonify({"has_password": False})
 
 
 @app.route("/api/resumes")

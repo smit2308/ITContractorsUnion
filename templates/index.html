@@ -254,11 +254,14 @@ a.email-link:hover{text-decoration:underline}
         <label>App Password</label>
         <input type="password" id="cfg-pass" placeholder="16-char Google App Password">
         <div class="hint">Generate at myaccount.google.com/apppasswords (2FA required)</div>
+        <div id="cfg-pass-saved" style="display:none;margin-top:6px;font-size:12px;color:#16a34a;font-weight:600">
+          &#10003; Password saved &mdash; leave blank to keep current
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('smtp-overlay')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSmtpConfig()">Save</button>
+      <button class="btn btn-primary" id="smtp-save-btn" onclick="saveSmtpConfig()">Save</button>
     </div>
   </div>
 </div>
@@ -471,6 +474,9 @@ async function init() {
     document.getElementById("cfg-host").value = cfg.smtp_host  || "smtp.gmail.com";
     document.getElementById("cfg-port").value = cfg.smtp_port  || 587;
     document.getElementById("cfg-user").value = cfg.username   || "";
+  }
+  if (cfg.has_password) {
+    document.getElementById("cfg-pass-saved").style.display = "";
   }
 
   await loadResumes();
@@ -854,23 +860,42 @@ function openResumeManager() {
 function openSmtpModal()   { openModal("smtp-overlay"); }
 
 async function saveSmtpConfig() {
+  const btn      = document.getElementById("smtp-save-btn");
+  const passVal  = document.getElementById("cfg-pass").value.trim();
+
   const cfg = {
     from_email: document.getElementById("cfg-from").value,
     smtp_host:  document.getElementById("cfg-host").value,
     smtp_port:  parseInt(document.getElementById("cfg-port").value),
     username:   document.getElementById("cfg-user").value,
-    password:   document.getElementById("cfg-pass").value,
   };
+  // only include password if user typed something — otherwise backend keeps existing
+  if (passVal) cfg.password = passVal;
+
+  btn.disabled = true; btn.textContent = "Saving…";
+
   const res  = await fetch("/api/config", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(cfg),
   });
   const data = await res.json();
+
+  btn.disabled = false;
   if (data.status === "saved") {
-    closeModal("smtp-overlay");
+    btn.textContent = "✓ Saved!";
+    btn.style.background = "#16a34a";
     document.getElementById("cfg-pass").value = "";
-  } else alert("Save failed.");
+    document.getElementById("cfg-pass-saved").style.display =
+      (passVal || data.has_password) ? "" : "none";
+    setTimeout(() => {
+      btn.textContent = "Save";
+      btn.style.background = "";
+    }, 2000);
+  } else {
+    btn.textContent = "Save";
+    alert("Save failed.");
+  }
 }
 
 // ── Template modal ────────────────────────────────────────────────────────────
