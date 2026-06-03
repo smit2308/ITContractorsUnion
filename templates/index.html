@@ -61,6 +61,8 @@ td.company-cell{max-width:160px}
 .level-mid{background:#fef9c3;color:#854d0e}
 .level-senior{background:#f3e8ff;color:#7e22ce}
 .sent-badge{display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#15803d;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px}
+.dupe-badge{display:inline-flex;align-items:center;gap:4px;background:#fef9c3;color:#92400e;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px}
+tbody tr.dupe-row{opacity:.45}
 .send-btn{background:#2563eb;color:#fff;border:none;border-radius:5px;padding:4px 12px;font-size:12px;cursor:pointer;white-space:nowrap;transition:background .15s}
 .send-btn:hover{background:#1d4ed8}
 a.email-link{color:#2563eb;text-decoration:none}
@@ -543,20 +545,30 @@ function renderResults(rows, page) {
   table.style.display = "";
   empty.style.display = "none";
 
+  const seenEmails = new Set();
+
   rows.forEach((job, i) => {
-    const lvl   = job.level || detectLevel(job.job_title);
-    const isSent = job.already_sent || !!sentLog[job.email?.toLowerCase()];
-    const tr    = document.createElement("tr");
+    const lvl     = job.level || detectLevel(job.job_title);
+    const emailKey = (job.email || "").toLowerCase().trim();
+    const isSent  = job.already_sent || !!sentLog[emailKey];
+    const isDupe  = !isSent && emailKey && seenEmails.has(emailKey);
+
+    if (!isDupe && emailKey) seenEmails.add(emailKey);
+
+    const tr = document.createElement("tr");
     if (isSent) tr.classList.add("sent-row");
+    if (isDupe) tr.classList.add("dupe-row");
     tr.dataset.idx = i;
 
     const lvlBadge = `<span class="level-badge level-${lvl}">${lvl}</span>`;
-    const action   = isSent
-      ? `<span class="sent-badge">&#10003; Sent</span>`
-      : `<button class="send-btn" onclick="openPreview(${i})">Send</button>`;
+    const action   = isSent  ? `<span class="sent-badge">&#10003; Sent</span>`
+                   : isDupe  ? `<span class="dupe-badge">&#8645; Duplicate</span>`
+                   :           `<button class="send-btn" onclick="openPreview(${i})">Send</button>`;
+
+    const cbDisabled = isSent || isDupe ? "disabled" : "";
 
     tr.innerHTML = `
-      <td><input type="checkbox" class="row-cb" data-idx="${i}" ${isSent?"disabled":""} onchange="updateSelectedCount()"></td>
+      <td><input type="checkbox" class="row-cb" data-idx="${i}" ${cbDisabled} onchange="updateSelectedCount()"></td>
       <td style="color:#94a3b8">${offset + i + 1}</td>
       <td class="title-cell"><span class="truncate" title="${esc(job.job_title)}">${esc(sanitizeTitle(job.job_title))}</span></td>
       <td class="company-cell"><span class="truncate" title="${esc(job.employer_name)}">${esc(job.employer_name)}</span></td>
