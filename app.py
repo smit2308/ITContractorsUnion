@@ -1,6 +1,7 @@
 import os
 import json
 import glob
+import uuid
 import zipfile
 import smtplib
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 from flask import Flask, request, jsonify, render_template
+from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).parent
 app = Flask(__name__)
@@ -83,8 +85,10 @@ STAFFING_NAME_FRAGMENTS = [
     "apexon", "softpath", "genesis10", "insight global",
 ]
 
-SENT_FILE   = BASE_DIR / "sent_emails.json"
-CONFIG_FILE = BASE_DIR / "email_config.json"
+SENT_FILE    = BASE_DIR / "sent_emails.json"
+CONFIG_FILE  = BASE_DIR / "email_config.json"
+RESUMES_FILE = BASE_DIR / "resumes.json"
+RESUMES_DIR  = BASE_DIR / "resumes"
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -149,6 +153,30 @@ def _record_sent(email: str, company: str, job_title: str):
     }
     with open(SENT_FILE, "w") as f:
         json.dump(log, f, indent=2)
+
+
+def _load_resumes() -> dict:
+    if RESUMES_FILE.exists():
+        try:
+            with open(RESUMES_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"active_id": None, "resumes": []}
+
+
+def _save_resumes(data: dict):
+    with open(RESUMES_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _get_active_resume_path() -> str | None:
+    data = _load_resumes()
+    aid  = data.get("active_id")
+    for r in data.get("resumes", []):
+        if r["id"] == aid:
+            return str(RESUMES_DIR / r["filename"])
+    return None
 
 
 def _state_csv_path(state: str) -> Path | None:
@@ -309,13 +337,12 @@ def api_jobs():
 
 @app.route("/api/send-email", methods=["POST"])
 def api_send_email():
-    body        = request.get_json()
-    to_email    = (body.get("email") or "").strip()
-    company     = body.get("company", "")
-    job_title   = body.get("job_title", "")
-    subject     = body.get("subject", "")
-    html_body   = body.get("body", "")
-    resume_path = body.get("resume_path", "")
+    body      = request.get_json()
+    to_email  = (body.get("email") or "").strip()
+    company   = body.get("company", "")
+    job_title = body.get("job_title", "")
+    subject   = body.get("subject", "")
+    html_body = body.get("body", "")
 
     if not to_email:
         return jsonify({"status": "error", "reason": "no email address"}), 400
@@ -323,6 +350,16 @@ def api_send_email():
     if _already_sent(to_email):
         return jsonify({"status": "skipped", "reason": "already sent"})
 
+    # ── resume (required) ─────────────────────────────────────────────────────
+    resume_path = _get_active_resume_path()
+    if not resume_path:
+        return jsonify({"status": "error",
+                        "reason": "No resume selected. Add one in Resume Manager."}), 400
+    if not os.path.isfile(resume_path):
+        return jsonify({"status": "error",
+                        "reason": "Active resume file not found on disk. Re-upload it."}), 400
+
+    # ── SMTP config ───────────────────────────────────────────────────────────
     cfg = {}
     if CONFIG_FILE.exists():
         try:
@@ -336,28 +373,26 @@ def api_send_email():
     smtp_port  = int(cfg.get("smtp_port", 587))
     username   = cfg.get("username", "")
     password   = cfg.get("password", "")
-    if not resume_path:
-        resume_path = cfg.get("resume_path", "")
 
     if not (from_email and username and password):
         return jsonify({"status": "error", "reason": "SMTP not configured"}), 400
 
+    # ── build message ─────────────────────────────────────────────────────────
     msg = MIMEMultipart("mixed")
     msg["From"]    = from_email
     msg["To"]      = to_email
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
-    if resume_path and os.path.isfile(resume_path):
-        with open(resume_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header(
-            "Content-Disposition",
-            f'attachment; filename="{os.path.basename(resume_path)}"',
-        )
-        msg.attach(part)
+    with open(resume_path, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header(
+        "Content-Disposition",
+        f'attachment; filename="{os.path.basename(resume_path)}"',
+    )
+    msg.attach(part)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as smtp:
@@ -399,6 +434,74 @@ def api_config():
         except Exception:
             pass
     return jsonify({})
+
+
+@app.route("/api/resumes")
+def api_resumes_list():
+    return jsonify(_load_resumes())
+
+
+@app.route("/api/resumes/upload", methods=["POST"])
+def api_resumes_upload():
+    if "file" not in request.files:
+        return jsonify({"status": "error", "reason": "no file provided"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"status": "error", "reason": "empty filename"}), 400
+    if not file.filename.lower().endswith(".pdf"):
+        return jsonify({"status": "error", "reason": "only PDF files are accepted"}), 400
+
+    RESUMES_DIR.mkdir(exist_ok=True)
+    rid      = uuid.uuid4().hex[:12]
+    safe     = secure_filename(file.filename)
+    filename = f"{rid}_{safe}"
+    file.save(str(RESUMES_DIR / filename))
+
+    data = _load_resumes()
+    data["resumes"].append({
+        "id":       rid,
+        "name":     safe,
+        "filename": filename,
+        "added_at": datetime.now(timezone.utc).isoformat(),
+    })
+    if data["active_id"] is None:
+        data["active_id"] = rid
+    _save_resumes(data)
+    return jsonify({"status": "uploaded", "id": rid, "name": safe,
+                    "active_id": data["active_id"]})
+
+
+@app.route("/api/resumes/active", methods=["POST"])
+def api_resumes_set_active():
+    rid  = (request.get_json() or {}).get("id", "")
+    data = _load_resumes()
+    ids  = [r["id"] for r in data["resumes"]]
+    if rid not in ids:
+        return jsonify({"status": "error", "reason": "unknown resume id"}), 404
+    data["active_id"] = rid
+    _save_resumes(data)
+    return jsonify({"status": "ok", "active_id": rid})
+
+
+@app.route("/api/resumes/<resume_id>", methods=["DELETE"])
+def api_resumes_delete(resume_id):
+    data = _load_resumes()
+    match = next((r for r in data["resumes"] if r["id"] == resume_id), None)
+    if not match:
+        return jsonify({"status": "error", "reason": "not found"}), 404
+
+    # delete file from disk
+    fpath = RESUMES_DIR / match["filename"]
+    try:
+        fpath.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    data["resumes"] = [r for r in data["resumes"] if r["id"] != resume_id]
+    if data["active_id"] == resume_id:
+        data["active_id"] = data["resumes"][0]["id"] if data["resumes"] else None
+    _save_resumes(data)
+    return jsonify({"status": "deleted", "active_id": data["active_id"]})
 
 
 if __name__ == "__main__":

@@ -107,6 +107,25 @@ a.email-link:hover{text-decoration:underline}
 .hint{font-size:11px;color:#94a3b8;margin-top:4px}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
+/* ── Resume dropdown in header ── */
+.resume-group{display:flex;align-items:center;gap:6px}
+#resume-select{background:#334155;border:1px solid #475569;color:#e2e8f0;padding:5px 10px;border-radius:6px;font-size:12px;max-width:200px;cursor:pointer;outline:none}
+#resume-select option{background:#1e293b}
+
+/* ── Resume Manager modal ── */
+.resume-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.resume-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;transition:background .1s}
+.resume-item.active-resume{background:#eff6ff;border-color:#bfdbfe}
+.resume-item label{flex:1;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.resume-item .r-name{font-size:13px;font-weight:600;color:#1e293b}
+.resume-item .r-date{font-size:11px;color:#94a3b8}
+.resume-item input[type=radio]{accent-color:#2563eb;width:16px;height:16px;flex-shrink:0;cursor:pointer}
+.resume-delete{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1}
+.resume-delete:hover{background:#fee2e2;color:#dc2626}
+.resume-upload-row{display:flex;gap:8px;align-items:center;margin-bottom:16px}
+.resume-upload-row input[type=file]{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:13px;background:#f8fafc}
+#resume-empty{text-align:center;padding:30px;color:#94a3b8;font-size:13px}
+
 /* ── Template modal tabs ── */
 .tpl-tabs{display:flex;gap:0;background:#f1f5f9;border-radius:7px;padding:3px}
 .tpl-tab{flex:1;border:none;background:none;padding:6px 14px;font-size:12px;font-weight:600;color:#64748b;border-radius:5px;cursor:pointer;transition:all .15s}
@@ -124,6 +143,12 @@ a.email-link:hover{text-decoration:underline}
 
 <header>
   <h1>H1B Job Mailer</h1>
+  <div class="resume-group">
+    <select id="resume-select" onchange="setActiveResume(this.value)">
+      <option value="">&#128196; No resume selected</option>
+    </select>
+    <button onclick="openResumeManager()">Manage</button>
+  </div>
   <button onclick="openTemplateModal()">Edit Template</button>
   <button onclick="openSmtpModal()">&#9881; SMTP Config</button>
 </header>
@@ -228,14 +253,31 @@ a.email-link:hover{text-decoration:underline}
         <input type="password" id="cfg-pass" placeholder="16-char Google App Password">
         <div class="hint">Generate at myaccount.google.com/apppasswords (2FA required)</div>
       </div>
-      <div class="form-row">
-        <label>Resume Path (PDF)</label>
-        <input type="text" id="cfg-resume" placeholder="C:\Users\you\resume.pdf">
-      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('smtp-overlay')">Cancel</button>
       <button class="btn btn-primary" onclick="saveSmtpConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Resume Manager Modal ── -->
+<div class="modal-overlay" id="resume-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Resume Manager</h2>
+      <button class="modal-close" onclick="closeModal('resume-overlay')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="resume-upload-row">
+        <input type="file" id="resume-file-input" accept=".pdf">
+        <button class="btn btn-primary" onclick="uploadResume()" id="upload-resume-btn">Upload</button>
+      </div>
+      <div id="resume-empty" style="display:none">No resumes yet. Upload a PDF above.</div>
+      <div class="resume-list" id="resume-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('resume-overlay')">Close</button>
     </div>
   </div>
 </div>
@@ -328,10 +370,6 @@ a.email-link:hover{text-decoration:underline}
     </div>
     <div class="modal-body">
       <p id="bulk-confirm-msg" style="font-size:14px;color:#1e293b;line-height:1.6"></p>
-      <div class="form-row" style="margin-top:16px">
-        <label>Resume Path (override)</label>
-        <input type="text" id="bulk-resume-path" placeholder="leave blank to use saved config">
-      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('bulk-overlay')">Cancel</button>
@@ -427,12 +465,13 @@ async function init() {
   // restore SMTP config (password blank)
   const cfg = await fetch("/api/config").then(r => r.json());
   if (cfg.from_email) {
-    document.getElementById("cfg-from").value   = cfg.from_email || "";
-    document.getElementById("cfg-host").value   = cfg.smtp_host  || "smtp.gmail.com";
-    document.getElementById("cfg-port").value   = cfg.smtp_port  || 587;
-    document.getElementById("cfg-user").value   = cfg.username   || "";
-    document.getElementById("cfg-resume").value = cfg.resume_path || "";
+    document.getElementById("cfg-from").value = cfg.from_email || "";
+    document.getElementById("cfg-host").value = cfg.smtp_host  || "smtp.gmail.com";
+    document.getElementById("cfg-port").value = cfg.smtp_port  || 587;
+    document.getElementById("cfg-user").value = cfg.username   || "";
   }
+
+  await loadResumes();
 }
 
 // ── Search ───────────────────────────────────────────────────────────────────
@@ -606,17 +645,15 @@ async function confirmSend() {
   const btn = document.getElementById("send-confirm-btn");
   btn.disabled = true; btn.textContent = "Sending…";
 
-  const resumePath = document.getElementById("cfg-resume").value;
   const res = await fetch("/api/send-email", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
-      email:       document.getElementById("preview-to").value,
-      company:     pendingJob.employer_name,
-      job_title:   pendingJob.job_title,
-      subject:     document.getElementById("preview-subject").value,
-      body:        document.getElementById("email-body-preview").value,
-      resume_path: resumePath,
+      email:     document.getElementById("preview-to").value,
+      company:   pendingJob.employer_name,
+      job_title: pendingJob.job_title,
+      subject:   document.getElementById("preview-subject").value,
+      body:      document.getElementById("email-body-preview").value,
     }),
   });
   const data = await res.json();
@@ -649,10 +686,8 @@ function openBulkConfirm() {
 }
 
 async function executeBulkSend() {
-  const checked    = [...document.querySelectorAll(".row-cb:checked")];
-  const resumePath = document.getElementById("bulk-resume-path").value
-                   || document.getElementById("cfg-resume").value;
-  const btn        = document.getElementById("bulk-confirm-btn");
+  const checked = [...document.querySelectorAll(".row-cb:checked")];
+  const btn     = document.getElementById("bulk-confirm-btn");
 
   let sent = 0, skipped = 0, errors = 0;
 
@@ -668,11 +703,10 @@ async function executeBulkSend() {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-          email:       job.email,
-          company:     job.employer_name,
-          job_title:   job.job_title,
+          email:     job.email,
+          company:   job.employer_name,
+          job_title: job.job_title,
           subject, body,
-          resume_path: resumePath,
         }),
       });
       const data = await res.json();
@@ -704,18 +738,116 @@ function refreshSentStatus() {
   updateSelectedCount();
 }
 
+// ── Resume manager ────────────────────────────────────────────────────────────
+
+async function loadResumes() {
+  const data = await fetch("/api/resumes").then(r => r.json());
+  renderResumeDropdown(data);
+  renderResumeList(data);
+}
+
+function renderResumeDropdown(data) {
+  const sel = document.getElementById("resume-select");
+  sel.innerHTML = '<option value="">&#128196; No resume selected</option>';
+  (data.resumes || []).forEach(r => {
+    const o = document.createElement("option");
+    o.value = r.id;
+    o.textContent = r.name;
+    if (r.id === data.active_id) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function renderResumeList(data) {
+  const list  = document.getElementById("resume-list");
+  const empty = document.getElementById("resume-empty");
+  const items = data.resumes || [];
+  list.innerHTML = "";
+  if (!items.length) {
+    empty.style.display = "";
+    return;
+  }
+  empty.style.display = "none";
+  items.forEach(r => {
+    const date = r.added_at ? new Date(r.added_at).toLocaleDateString() : "";
+    const isActive = r.id === data.active_id;
+    const div = document.createElement("div");
+    div.className = "resume-item" + (isActive ? " active-resume" : "");
+    div.id = `ritem-${r.id}`;
+    div.innerHTML = `
+      <input type="radio" name="active-resume" value="${r.id}" ${isActive ? "checked" : ""}
+             onchange="setActiveResume('${r.id}')">
+      <label onclick="">
+        <span class="r-name">${esc(r.name)}</span>
+        <span class="r-date">Added ${date}${isActive ? " &nbsp;&#10003; Active" : ""}</span>
+      </label>
+      <button class="resume-delete" title="Remove" onclick="deleteResume('${r.id}')">&#215;</button>`;
+    list.appendChild(div);
+  });
+}
+
+async function setActiveResume(id) {
+  if (!id) return;
+  await fetch("/api/resumes/active", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({id}),
+  });
+  await loadResumes();
+}
+
+async function uploadResume() {
+  const input = document.getElementById("resume-file-input");
+  const btn   = document.getElementById("upload-resume-btn");
+  if (!input.files.length) { alert("Choose a PDF file first."); return; }
+
+  const fd = new FormData();
+  fd.append("file", input.files[0]);
+  btn.disabled = true; btn.textContent = "Uploading…";
+
+  try {
+    const res  = await fetch("/api/resumes/upload", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.status === "uploaded") {
+      input.value = "";
+      await loadResumes();
+    } else {
+      alert("Upload failed: " + (data.reason || "unknown error"));
+    }
+  } catch (e) {
+    alert("Upload error: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Upload";
+  }
+}
+
+async function deleteResume(id) {
+  if (!confirm("Remove this resume?")) return;
+  const res  = await fetch(`/api/resumes/${id}`, { method: "DELETE" });
+  const data = await res.json();
+  if (data.status === "deleted") {
+    await loadResumes();
+  } else {
+    alert("Delete failed: " + (data.reason || "unknown error"));
+  }
+}
+
+function openResumeManager() {
+  loadResumes();
+  openModal("resume-overlay");
+}
+
 // ── SMTP config ───────────────────────────────────────────────────────────────
 
 function openSmtpModal()   { openModal("smtp-overlay"); }
 
 async function saveSmtpConfig() {
   const cfg = {
-    from_email:  document.getElementById("cfg-from").value,
-    smtp_host:   document.getElementById("cfg-host").value,
-    smtp_port:   parseInt(document.getElementById("cfg-port").value),
-    username:    document.getElementById("cfg-user").value,
-    password:    document.getElementById("cfg-pass").value,
-    resume_path: document.getElementById("cfg-resume").value,
+    from_email: document.getElementById("cfg-from").value,
+    smtp_host:  document.getElementById("cfg-host").value,
+    smtp_port:  parseInt(document.getElementById("cfg-port").value),
+    username:   document.getElementById("cfg-user").value,
+    password:   document.getElementById("cfg-pass").value,
   };
   const res  = await fetch("/api/config", {
     method: "POST",

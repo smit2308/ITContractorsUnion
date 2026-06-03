@@ -1,4 +1,6 @@
 email_config.json
 sent_emails.json
+resumes.json
+resumes/
 __pycache__/
 *.pyc
