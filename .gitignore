@@ -1,0 +1,4 @@
+email_config.json
+sent_emails.json
+__pycache__/
+*.pyc

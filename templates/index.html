@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>H1B Job Mailer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;height:100vh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+header{background:#1e293b;color:#fff;padding:0 20px;display:flex;align-items:center;gap:12px;height:52px;flex-shrink:0}
+header h1{font-size:15px;font-weight:600;letter-spacing:.3px;flex:1}
+header button{background:#334155;border:none;color:#cbd5e1;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;transition:background .15s}
+header button:hover{background:#475569}
+
+/* ── Layout ── */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* ── Sidebar ── */
+aside{width:240px;background:#fff;border-right:1px solid #e2e8f0;padding:16px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex-shrink:0}
+aside label{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px}
+aside select,aside input[type=text]{width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;color:#1e293b;background:#f8fafc;outline:none}
+aside select:focus,aside input:focus{border-color:#3b82f6;background:#fff}
+
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;transition:all .15s}
+.pill.active{background:#2563eb;border-color:#2563eb;color:#fff}
+
+#search-btn{width:100%;background:#2563eb;color:#fff;border:none;border-radius:7px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;transition:background .15s}
+#search-btn:hover{background:#1d4ed8}
+
+/* ── Main ── */
+main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+.stats-bar{background:#fff;border-bottom:1px solid #e2e8f0;padding:8px 18px;display:flex;gap:20px;align-items:center;font-size:12px;flex-shrink:0}
+.stat{display:flex;gap:5px;align-items:center}
+.stat-label{color:#94a3b8}
+.stat-val{font-weight:700;color:#1e293b}
+
+.toolbar{padding:10px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.toolbar label{font-size:13px;color:#475569;display:flex;align-items:center;gap:6px;cursor:pointer}
+.toolbar input[type=checkbox]{width:15px;height:15px;cursor:pointer}
+#bulk-send-btn{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;margin-left:auto;transition:background .15s}
+#bulk-send-btn:hover{background:#15803d}
+#bulk-send-btn:disabled{background:#9ca3af;cursor:default}
+
+/* ── Table ── */
+.table-wrap{flex:1;overflow-y:auto;padding:0 18px 18px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+thead th{background:#f8fafc;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s}
+tbody tr:hover{background:#f8fafc}
+tbody tr.sent-row{opacity:.55}
+td{padding:8px 10px;vertical-align:middle}
+td.title-cell{max-width:180px}
+td.company-cell{max-width:160px}
+.truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.level-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase}
+.level-entry{background:#dbeafe;color:#1d4ed8}
+.level-mid{background:#fef9c3;color:#854d0e}
+.level-senior{background:#f3e8ff;color:#7e22ce}
+.sent-badge{display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#15803d;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px}
+.send-btn{background:#2563eb;color:#fff;border:none;border-radius:5px;padding:4px 12px;font-size:12px;cursor:pointer;white-space:nowrap;transition:background .15s}
+.send-btn:hover{background:#1d4ed8}
+a.email-link{color:#2563eb;text-decoration:none}
+a.email-link:hover{text-decoration:underline}
+
+/* ── Pagination ── */
+.pagination{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0}
+.pagination button{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;color:#475569}
+.pagination button:hover:not(:disabled){background:#e2e8f0}
+.pagination button:disabled{opacity:.4;cursor:default}
+.pagination span{font-size:12px;color:#64748b}
+#empty-msg{text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px}
+
+/* ── Modal backdrop ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.2);width:560px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column}
+.modal.wide{width:680px}
+.modal-header{padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px}
+.modal-header h2{font-size:15px;font-weight:700;flex:1}
+.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;line-height:1}
+.modal-close:hover{color:#1e293b}
+.modal-body{padding:20px;overflow-y:auto;flex:1}
+.modal-footer{padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end}
+
+.form-row{margin-bottom:14px}
+.form-row label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px}
+.form-row input,.form-row textarea,.form-row select{width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:13px;color:#1e293b;outline:none;font-family:inherit}
+.form-row input:focus,.form-row textarea:focus{border-color:#3b82f6}
+.form-row textarea{resize:vertical;min-height:80px}
+#email-body-preview{min-height:220px;font-size:12.5px;line-height:1.6}
+#template-body{min-height:180px;font-size:12.5px;font-family:'Courier New',monospace}
+
+.btn{border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-success{background:#16a34a;color:#fff}
+.btn-success:hover{background:#15803d}
+.btn-ghost{background:#f1f5f9;color:#475569}
+.btn-ghost:hover{background:#e2e8f0}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-danger:hover{background:#b91c1c}
+
+.hint{font-size:11px;color:#94a3b8;margin-top:4px}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>H1B Job Mailer</h1>
+  <button onclick="openTemplateModal()">Edit Template</button>
+  <button onclick="openSmtpModal()">&#9881; SMTP Config</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div>
+      <label>State</label>
+      <select id="state-select"><option value="">-- select state --</option></select>
+    </div>
+    <div>
+      <label>Role</label>
+      <select id="role-select"><option value="">-- select role --</option></select>
+    </div>
+    <div>
+      <label>Experience</label>
+      <div class="pills">
+        <div class="pill active" data-level="all" onclick="setLevel(this)">All</div>
+        <div class="pill" data-level="entry" onclick="setLevel(this)">Entry</div>
+        <div class="pill" data-level="mid" onclick="setLevel(this)">Mid</div>
+        <div class="pill" data-level="senior" onclick="setLevel(this)">Senior</div>
+      </div>
+    </div>
+    <div>
+      <label>Keyword</label>
+      <input type="text" id="keyword-input" placeholder="e.g. React, Austin...">
+    </div>
+    <button id="search-btn" onclick="searchJobs(1)">Search Jobs</button>
+  </aside>
+
+  <main>
+    <div class="stats-bar">
+      <div class="stat"><span class="stat-label">Found:</span><span class="stat-val" id="stat-total">—</span></div>
+      <div class="stat"><span class="stat-label">Selected:</span><span class="stat-val" id="stat-selected">0</span></div>
+      <div class="stat"><span class="stat-label">Sent:</span><span class="stat-val" id="stat-sent">—</span></div>
+      <div class="stat"><span class="stat-label">State:</span><span class="stat-val" id="stat-state">—</span></div>
+    </div>
+
+    <div class="toolbar">
+      <label><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"> Select all on page</label>
+      <button id="bulk-send-btn" disabled onclick="openBulkConfirm()">Send to Selected (<span id="selected-count">0</span>)</button>
+    </div>
+
+    <div class="table-wrap">
+      <div id="empty-msg">Select a state and role, then click Search Jobs.</div>
+      <table id="results-table" style="display:none">
+        <thead>
+          <tr>
+            <th style="width:32px"></th>
+            <th>#</th>
+            <th>Job Title</th>
+            <th>Company</th>
+            <th>City</th>
+            <th>Level</th>
+            <th>Contact</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>H1B Dep</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <button id="prev-btn" disabled onclick="changePage(-1)">&#8592; Prev</button>
+      <span id="page-info">Page 1</span>
+      <button id="next-btn" disabled onclick="changePage(1)">Next &#8594;</button>
+    </div>
+  </main>
+</div>
+
+<!-- ── SMTP Config Modal ── -->
+<div class="modal-overlay" id="smtp-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>SMTP Configuration</h2>
+      <button class="modal-close" onclick="closeModal('smtp-overlay')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>From Email</label>
+        <input type="email" id="cfg-from" placeholder="you@gmail.com">
+      </div>
+      <div class="row-2">
+        <div class="form-row">
+          <label>SMTP Host</label>
+          <input type="text" id="cfg-host" value="smtp.gmail.com">
+        </div>
+        <div class="form-row">
+          <label>SMTP Port</label>
+          <input type="number" id="cfg-port" value="587">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Username</label>
+        <input type="email" id="cfg-user" placeholder="you@gmail.com">
+      </div>
+      <div class="form-row">
+        <label>App Password</label>
+        <input type="password" id="cfg-pass" placeholder="16-char Google App Password">
+        <div class="hint">Generate at myaccount.google.com/apppasswords (2FA required)</div>
+      </div>
+      <div class="form-row">
+        <label>Resume Path (PDF)</label>
+        <input type="text" id="cfg-resume" placeholder="C:\Users\you\resume.pdf">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('smtp-overlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSmtpConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Email Template Modal ── -->
+<div class="modal-overlay" id="template-overlay">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h2>Email Template</h2>
+      <button class="modal-close" onclick="closeModal('template-overlay')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:#64748b;margin-bottom:14px">
+        Variables: <code>{name}</code> &nbsp; <code>{company}</code> &nbsp;
+        <code>{role_area}</code> &nbsp; <code>{experience_blurb}</code>
+      </p>
+      <div class="form-row">
+        <label>Subject</label>
+        <input type="text" id="template-subject" value="Inquiry Regarding Open Positions at {company}">
+      </div>
+      <div class="form-row">
+        <label>Body (HTML)</label>
+        <textarea id="template-body"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="resetTemplate()">Reset to Default</button>
+      <button class="btn btn-ghost" onclick="closeModal('template-overlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Email Preview Modal ── -->
+<div class="modal-overlay" id="preview-overlay">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h2>Preview &amp; Send</h2>
+      <button class="modal-close" onclick="closeModal('preview-overlay')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>To</label>
+        <input type="email" id="preview-to" readonly style="background:#f8fafc">
+      </div>
+      <div class="form-row">
+        <label>Subject</label>
+        <input type="text" id="preview-subject">
+      </div>
+      <div class="form-row">
+        <label>Body</label>
+        <textarea id="email-body-preview"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('preview-overlay')">Cancel</button>
+      <button class="btn btn-success" id="send-confirm-btn" onclick="confirmSend()">Send Email</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk Confirm Modal ── -->
+<div class="modal-overlay" id="bulk-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Confirm Bulk Send</h2>
+      <button class="modal-close" onclick="closeModal('bulk-overlay')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="bulk-confirm-msg" style="font-size:14px;color:#1e293b;line-height:1.6"></p>
+      <div class="form-row" style="margin-top:16px">
+        <label>Resume Path (override)</label>
+        <input type="text" id="bulk-resume-path" placeholder="leave blank to use saved config">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('bulk-overlay')">Cancel</button>
+      <button class="btn btn-danger" id="bulk-confirm-btn" onclick="executeBulkSend()">Send to All (<span id="bulk-confirm-count">0</span>)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+
+let currentPage   = 1;
+let totalResults  = 0;
+let selectedLevel = "all";
+let currentRows   = [];
+let pendingJob    = null;
+let sentLog       = {};
+
+// ── Role blurbs / areas ──────────────────────────────────────────────────────
+
+const ROLE_BLURBS = {
+  "Software Engineer / Developer":  "software development with Java, Python, TypeScript, and REST APIs",
+  "Full Stack / Web":               "React.js, Next.js, TypeScript on the frontend and Node.js/Express on the backend",
+  "Backend / Java / Spring / API":  "Spring Boot REST APIs, Spring Security, JPA/Hibernate, and MySQL/PostgreSQL",
+  "Python / AI / ML / GenAI":       "TensorFlow, Keras, RAG pipelines, LLM integration (Llama 3, Groq), and YOLOv8",
+  "Data / Analytics / BI":          "Pandas, GeoPandas, SQL, time-series analysis, clustering, and BI dashboards",
+  "Cloud / DevOps":                 "AWS (EC2, S3, Lambda), Docker, Kubernetes, and CI/CD pipelines",
+};
+
+const ROLE_AREAS = {
+  "Software Engineer / Developer":  "software engineering and application development",
+  "Full Stack / Web":               "full-stack and web development",
+  "Backend / Java / Spring / API":  "backend and API development",
+  "Python / AI / ML / GenAI":       "Python, AI/ML, and Generative AI engineering",
+  "Data / Analytics / BI":          "data science, analytics, and business intelligence",
+  "Cloud / DevOps":                 "cloud infrastructure and DevOps",
+};
+
+// ── Default template ─────────────────────────────────────────────────────────
+
+const DEFAULT_SUBJECT  = "Inquiry Regarding Open Positions at {company}";
+const DEFAULT_BODY = `<p>Dear {name},</p>
+
+<p>I am writing to inquire about entry-level or junior openings in {role_area} at <strong>{company}</strong>. I understand that under the H-1B Labor Condition Application process, employers are required to make available positions open to domestic applicants, and I would like to be considered for any such opportunities.</p>
+
+<p>My background includes hands-on experience with {experience_blurb}. I am eager to contribute to your team and grow within the organization.</p>
+
+<p>I have attached my resume for your review. I would greatly appreciate the opportunity to discuss how my skills align with your team's needs. Please let me know a convenient time to connect, or feel free to reply to this email.</p>
+
+<p>Thank you for your time and consideration.</p>
+
+<p>Best regards,<br>
+[Your Name]<br>
+[Your Phone]<br>
+[Your LinkedIn]</p>`;
+
+function getTemplate() {
+  return {
+    subject: localStorage.getItem("tpl_subject") || DEFAULT_SUBJECT,
+    body:    localStorage.getItem("tpl_body")    || DEFAULT_BODY,
+  };
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+async function init() {
+  const [statesRes, rolesRes, sentRes] = await Promise.all([
+    fetch("/api/states").then(r => r.json()),
+    fetch("/api/roles").then(r => r.json()),
+    fetch("/api/sent").then(r => r.json()),
+  ]);
+
+  sentLog = sentRes || {};
+  document.getElementById("stat-sent").textContent = Object.keys(sentLog).length;
+
+  const stateEl = document.getElementById("state-select");
+  statesRes.forEach(s => {
+    const o = document.createElement("option"); o.value = s; o.textContent = s;
+    stateEl.appendChild(o);
+  });
+
+  const roleEl = document.getElementById("role-select");
+  rolesRes.forEach(r => {
+    const o = document.createElement("option"); o.value = r; o.textContent = r;
+    roleEl.appendChild(o);
+  });
+
+  // restore saved template
+  const tpl = getTemplate();
+  document.getElementById("template-subject").value = tpl.subject;
+  document.getElementById("template-body").value    = tpl.body;
+
+  // restore SMTP config (password blank)
+  const cfg = await fetch("/api/config").then(r => r.json());
+  if (cfg.from_email) {
+    document.getElementById("cfg-from").value   = cfg.from_email || "";
+    document.getElementById("cfg-host").value   = cfg.smtp_host  || "smtp.gmail.com";
+    document.getElementById("cfg-port").value   = cfg.smtp_port  || 587;
+    document.getElementById("cfg-user").value   = cfg.username   || "";
+    document.getElementById("cfg-resume").value = cfg.resume_path || "";
+  }
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+
+async function searchJobs(page) {
+  const state   = document.getElementById("state-select").value;
+  const role    = document.getElementById("role-select").value;
+  const keyword = document.getElementById("keyword-input").value;
+
+  if (!state) { alert("Please select a state first."); return; }
+
+  document.getElementById("search-btn").textContent = "Searching…";
+  document.getElementById("stat-state").textContent = state;
+
+  try {
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ state, role, level: selectedLevel, keyword, page }),
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    currentPage  = data.page;
+    totalResults = data.total;
+    currentRows  = data.rows;
+
+    renderResults(data.rows, page);
+    updatePagination(data.total, data.page, data.per_page);
+    document.getElementById("stat-total").textContent = data.total;
+  } catch(e) {
+    alert("Error: " + e.message);
+  } finally {
+    document.getElementById("search-btn").textContent = "Search Jobs";
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+
+function sanitizeTitle(title) {
+  return title.replace(/\b(senior|sr\.|lead|principal|staff|director|architect)\b/gi, "").replace(/\s+/g, " ").trim();
+}
+
+function detectLevel(title) {
+  const t = title.toLowerCase();
+  if (/senior|sr\.|lead|principal|staff|architect|director|manager/.test(t)) return "senior";
+  if (/junior|jr\.|associate|entry|\bi\b/.test(t)) return "entry";
+  if (/mid|intermediate|\bii\b/.test(t)) return "mid";
+  return "mid";
+}
+
+function renderResults(rows, page) {
+  const tbody  = document.getElementById("results-body");
+  const table  = document.getElementById("results-table");
+  const empty  = document.getElementById("empty-msg");
+  const offset = (page - 1) * 50;
+
+  tbody.innerHTML = "";
+  document.getElementById("select-all").checked = false;
+  updateSelectedCount();
+
+  if (!rows.length) {
+    table.style.display = "none";
+    empty.textContent   = "No results found. Try a different filter.";
+    empty.style.display = "";
+    return;
+  }
+
+  table.style.display = "";
+  empty.style.display = "none";
+
+  rows.forEach((job, i) => {
+    const lvl   = job.level || detectLevel(job.job_title);
+    const isSent = job.already_sent || !!sentLog[job.email?.toLowerCase()];
+    const tr    = document.createElement("tr");
+    if (isSent) tr.classList.add("sent-row");
+    tr.dataset.idx = i;
+
+    const lvlBadge = `<span class="level-badge level-${lvl}">${lvl}</span>`;
+    const action   = isSent
+      ? `<span class="sent-badge">&#10003; Sent</span>`
+      : `<button class="send-btn" onclick="openPreview(${i})">Send</button>`;
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="row-cb" data-idx="${i}" ${isSent?"disabled":""} onchange="updateSelectedCount()"></td>
+      <td style="color:#94a3b8">${offset + i + 1}</td>
+      <td class="title-cell"><span class="truncate" title="${esc(job.job_title)}">${esc(sanitizeTitle(job.job_title))}</span></td>
+      <td class="company-cell"><span class="truncate" title="${esc(job.employer_name)}">${esc(job.employer_name)}</span></td>
+      <td>${esc(job.worksite_city)}</td>
+      <td>${lvlBadge}</td>
+      <td>${esc(job.poc_first)} ${esc(job.poc_last)}</td>
+      <td><a class="email-link" href="mailto:${esc(job.email)}">${esc(job.email)}</a></td>
+      <td style="color:#64748b">${esc(job.phone)}</td>
+      <td style="color:#64748b">${esc(job.h1b_dependent)}</td>
+      <td>${action}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll(".row-cb:not(:disabled)").forEach(c => c.checked = cb.checked);
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = document.querySelectorAll(".row-cb:checked").length;
+  document.getElementById("stat-selected").textContent = n;
+  document.getElementById("selected-count").textContent = n;
+  document.getElementById("bulk-send-btn").disabled = n === 0;
+}
+
+// ── Level pills ───────────────────────────────────────────────────────────────
+
+function setLevel(el) {
+  document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+  el.classList.add("active");
+  selectedLevel = el.dataset.level;
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
+function updatePagination(total, page, perPage) {
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  document.getElementById("page-info").textContent = `Page ${page} of ${pages}`;
+  document.getElementById("prev-btn").disabled = page <= 1;
+  document.getElementById("next-btn").disabled = page >= pages;
+}
+
+function changePage(delta) {
+  searchJobs(currentPage + delta);
+}
+
+// ── Email generation ──────────────────────────────────────────────────────────
+
+function generateEmail(job) {
+  const role       = document.getElementById("role-select").value;
+  const blurb      = ROLE_BLURBS[role]  || "software engineering and technology";
+  const area       = ROLE_AREAS[role]   || "technology";
+  const tpl        = getTemplate();
+  const name       = [job.poc_first, job.poc_last].filter(Boolean).join(" ") || "Hiring Team";
+  const company    = job.employer_name || "your company";
+
+  const fill = s => s
+    .replace(/\{name\}/g, name)
+    .replace(/\{company\}/g, company)
+    .replace(/\{role_area\}/g, area)
+    .replace(/\{experience_blurb\}/g, blurb);
+
+  return { subject: fill(tpl.subject), body: fill(tpl.body) };
+}
+
+// ── Preview modal ─────────────────────────────────────────────────────────────
+
+function openPreview(idx) {
+  pendingJob = currentRows[idx];
+  const { subject, body } = generateEmail(pendingJob);
+  document.getElementById("preview-to").value      = pendingJob.email;
+  document.getElementById("preview-subject").value = subject;
+  document.getElementById("email-body-preview").value = body;
+  openModal("preview-overlay");
+}
+
+async function confirmSend() {
+  if (!pendingJob) return;
+  const btn = document.getElementById("send-confirm-btn");
+  btn.disabled = true; btn.textContent = "Sending…";
+
+  const resumePath = document.getElementById("cfg-resume").value;
+  const res = await fetch("/api/send-email", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      email:       document.getElementById("preview-to").value,
+      company:     pendingJob.employer_name,
+      job_title:   pendingJob.job_title,
+      subject:     document.getElementById("preview-subject").value,
+      body:        document.getElementById("email-body-preview").value,
+      resume_path: resumePath,
+    }),
+  });
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = "Send Email";
+
+  if (data.status === "sent") {
+    sentLog[pendingJob.email.toLowerCase()] = true;
+    document.getElementById("stat-sent").textContent = Object.keys(sentLog).length;
+    closeModal("preview-overlay");
+    refreshSentStatus();
+  } else if (data.status === "skipped") {
+    alert("Already sent to this address.");
+    closeModal("preview-overlay");
+  } else {
+    alert("Error: " + (data.reason || "unknown error"));
+  }
+}
+
+// ── Bulk send ─────────────────────────────────────────────────────────────────
+
+function openBulkConfirm() {
+  const checked = document.querySelectorAll(".row-cb:checked");
+  const n = checked.length;
+  document.getElementById("bulk-confirm-msg").textContent =
+    `You are about to send ${n} email${n !== 1 ? "s" : ""}. Already-sent addresses will be skipped automatically.`;
+  // use innerHTML to preserve inner span
+  document.getElementById("bulk-confirm-btn").innerHTML =
+    `Send to All (<span id="bulk-confirm-count">${n}</span>)`;
+  openModal("bulk-overlay");
+}
+
+async function executeBulkSend() {
+  const checked    = [...document.querySelectorAll(".row-cb:checked")];
+  const resumePath = document.getElementById("bulk-resume-path").value
+                   || document.getElementById("cfg-resume").value;
+  const btn        = document.getElementById("bulk-confirm-btn");
+
+  let sent = 0, skipped = 0, errors = 0;
+
+  for (let i = 0; i < checked.length; i++) {
+    const idx = parseInt(checked[i].dataset.idx);
+    const job = currentRows[idx];
+    const { subject, body } = generateEmail(job);
+
+    btn.innerHTML = `Sending ${i + 1}/${checked.length}… (<span id="bulk-confirm-count">${checked.length - i - 1}</span> left)`;
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          email:       job.email,
+          company:     job.employer_name,
+          job_title:   job.job_title,
+          subject, body,
+          resume_path: resumePath,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "sent")    { sent++; sentLog[job.email.toLowerCase()] = true; }
+      else if (data.status === "skipped") skipped++;
+      else errors++;
+    } catch (_) { errors++; }
+  }
+
+  document.getElementById("stat-sent").textContent = Object.keys(sentLog).length;
+  closeModal("bulk-overlay");
+  refreshSentStatus();
+  alert(`Done — Sent: ${sent} | Skipped: ${skipped} | Errors: ${errors}`);
+}
+
+// After send, update sent badges in table
+function refreshSentStatus() {
+  document.querySelectorAll(".row-cb").forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const job = currentRows[idx];
+    if (job && sentLog[job.email?.toLowerCase()]) {
+      const tr = cb.closest("tr");
+      tr.classList.add("sent-row");
+      cb.disabled = true; cb.checked = false;
+      const actionTd = tr.cells[tr.cells.length - 1];
+      actionTd.innerHTML = `<span class="sent-badge">&#10003; Sent</span>`;
+    }
+  });
+  updateSelectedCount();
+}
+
+// ── SMTP config ───────────────────────────────────────────────────────────────
+
+function openSmtpModal()   { openModal("smtp-overlay"); }
+
+async function saveSmtpConfig() {
+  const cfg = {
+    from_email:  document.getElementById("cfg-from").value,
+    smtp_host:   document.getElementById("cfg-host").value,
+    smtp_port:   parseInt(document.getElementById("cfg-port").value),
+    username:    document.getElementById("cfg-user").value,
+    password:    document.getElementById("cfg-pass").value,
+    resume_path: document.getElementById("cfg-resume").value,
+  };
+  const res  = await fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(cfg),
+  });
+  const data = await res.json();
+  if (data.status === "saved") {
+    closeModal("smtp-overlay");
+    document.getElementById("cfg-pass").value = "";
+  } else alert("Save failed.");
+}
+
+// ── Template modal ────────────────────────────────────────────────────────────
+
+function openTemplateModal() {
+  const tpl = getTemplate();
+  document.getElementById("template-subject").value = tpl.subject;
+  document.getElementById("template-body").value    = tpl.body;
+  openModal("template-overlay");
+}
+
+function saveTemplate() {
+  localStorage.setItem("tpl_subject", document.getElementById("template-subject").value);
+  localStorage.setItem("tpl_body",    document.getElementById("template-body").value);
+  closeModal("template-overlay");
+}
+
+function resetTemplate() {
+  if (!confirm("Reset template to default?")) return;
+  localStorage.removeItem("tpl_subject");
+  localStorage.removeItem("tpl_body");
+  document.getElementById("template-subject").value = DEFAULT_SUBJECT;
+  document.getElementById("template-body").value    = DEFAULT_BODY;
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+
+function openModal(id)  { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+document.querySelectorAll(".modal-overlay").forEach(el => {
+  el.addEventListener("click", e => { if (e.target === el) el.classList.remove("open"); });
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape")
+    document.querySelectorAll(".modal-overlay.open").forEach(el => el.classList.remove("open"));
+});
+
+// ── Keyboard shortcut: Enter in sidebar → search ──────────────────────────────
+document.getElementById("keyword-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") searchJobs(1);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
