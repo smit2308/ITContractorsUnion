@@ -253,7 +253,7 @@ def api_states():
 
 @app.route("/api/roles")
 def api_roles():
-    return jsonify(["All Relevant Roles"] + list(ROLE_GROUPS.keys()))
+    return jsonify(["All Roles"] + list(ROLE_GROUPS.keys()))
 
 
 @app.route("/api/jobs", methods=["POST"])
@@ -287,7 +287,7 @@ def api_jobs():
     df = df[~df["employer_name"].apply(lambda x: _is_staffing(str(x)))]
 
     # role filter
-    all_roles = (not role or role == "All Relevant Roles")
+    all_roles = (not role or role == "All Roles")
     df = df[df.apply(
         lambda r: _role_matches(
             str(r.get("job_title", "")),
