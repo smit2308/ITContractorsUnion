@@ -128,6 +128,12 @@ a.email-link:hover{text-decoration:underline}
 .resume-upload-row input[type=file]{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:13px;background:#f8fafc}
 #resume-empty{text-align:center;padding:30px;color:#94a3b8;font-size:13px}
 
+/* ── Template preset bar ── */
+.preset-bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e2e8f0}
+.preset-bar select{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:13px;color:#1e293b;background:#f8fafc;outline:none}
+.preset-bar select:focus{border-color:#3b82f6;background:#fff}
+.preset-bar .btn{padding:6px 12px;font-size:12px;white-space:nowrap}
+
 /* ── Template modal tabs ── */
 .tpl-tabs{display:flex;gap:0;background:#f1f5f9;border-radius:7px;padding:3px}
 .tpl-tab{flex:1;border:none;background:none;padding:6px 14px;font-size:12px;font-weight:600;color:#64748b;border-radius:5px;cursor:pointer;transition:all .15s}
@@ -317,6 +323,11 @@ a.email-link:hover{text-decoration:underline}
     <div class="modal-body">
       <!-- Edit panel -->
       <div class="tpl-edit-panel" id="tpl-edit-panel">
+        <div class="preset-bar">
+          <select id="tpl-preset-select" onchange="applyPreset(this.value)"></select>
+          <button class="btn btn-ghost" onclick="saveAsPreset()">Save As&hellip;</button>
+          <button class="btn btn-ghost" id="tpl-delete-btn" onclick="deletePreset()" title="Delete preset">&#128465;</button>
+        </div>
         <p style="font-size:12px;color:#64748b;margin-bottom:14px">
           Variables: <code>{name}</code> &nbsp; <code>{company}</code> &nbsp;
           <code>{role_area}</code> &nbsp; <code>{role_noun}</code> &nbsp;
@@ -348,9 +359,9 @@ a.email-link:hover{text-decoration:underline}
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-ghost" id="tpl-reset-btn" onclick="resetTemplate()">Reset to Default</button>
+      <button class="btn btn-ghost" id="tpl-reset-btn" onclick="resetActivePreset()">Reset to Default</button>
       <button class="btn btn-ghost" onclick="closeModal('template-overlay')">Cancel</button>
-      <button class="btn btn-primary" id="tpl-save-btn" onclick="saveTemplate()">Save Template</button>
+      <button class="btn btn-primary" id="tpl-save-btn" onclick="saveCurrentPreset()">Save Preset</button>
     </div>
   </div>
 </div>
@@ -458,11 +469,108 @@ const DEFAULT_BODY = `<p>Hi {name},</p>
 <p>— {your_name}<br>
 {your_phone} | {your_linkedin}</p>`;
 
+// ── Preset storage ───────────────────────────────────────────────────────────
+
+function _loadPresets() {
+  try {
+    const raw = localStorage.getItem("tpl_presets");
+    if (raw) return JSON.parse(raw);
+  } catch(_) {}
+  // First run — seed with built-in default
+  const seed = [{
+    id: "default", name: "Junior Outreach (Default)",
+    subject: DEFAULT_SUBJECT, body: DEFAULT_BODY, builtin: true,
+  }];
+  localStorage.setItem("tpl_presets", JSON.stringify(seed));
+  localStorage.setItem("tpl_active_id", "default");
+  return seed;
+}
+
+function _savePresets(presets) {
+  localStorage.setItem("tpl_presets", JSON.stringify(presets));
+}
+
+function _activePresetId() {
+  return localStorage.getItem("tpl_active_id") || "default";
+}
+
 function getTemplate() {
-  return {
-    subject: localStorage.getItem("tpl_subject") || DEFAULT_SUBJECT,
-    body:    localStorage.getItem("tpl_body")    || DEFAULT_BODY,
-  };
+  const presets = _loadPresets();
+  const preset  = presets.find(p => p.id === _activePresetId()) || presets[0];
+  return { subject: preset.subject, body: preset.body };
+}
+
+// ── Preset UI ─────────────────────────────────────────────────────────────────
+
+function populatePresetDropdown() {
+  const sel     = document.getElementById("tpl-preset-select");
+  const activeId = _activePresetId();
+  const presets = _loadPresets();
+  sel.innerHTML = "";
+  presets.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name;
+    if (p.id === activeId) o.selected = true;
+    sel.appendChild(o);
+  });
+  // Disable delete when only one preset remains
+  document.getElementById("tpl-delete-btn").disabled = presets.length <= 1;
+}
+
+function applyPreset(id) {
+  const presets = _loadPresets();
+  const preset  = presets.find(p => p.id === id);
+  if (!preset) return;
+  localStorage.setItem("tpl_active_id", id);
+  document.getElementById("template-subject").value = preset.subject;
+  document.getElementById("template-body").value    = preset.body;
+  document.getElementById("tpl-delete-btn").disabled = presets.length <= 1;
+}
+
+function saveCurrentPreset() {
+  const presets  = _loadPresets();
+  const activeId = _activePresetId();
+  const idx      = presets.findIndex(p => p.id === activeId);
+  if (idx === -1) return;
+  presets[idx].subject = document.getElementById("template-subject").value;
+  presets[idx].body    = document.getElementById("template-body").value;
+  _savePresets(presets);
+  closeModal("template-overlay");
+}
+
+function saveAsPreset() {
+  const name = prompt("Preset name:")?.trim();
+  if (!name) return;
+  const presets = _loadPresets();
+  const id      = "p_" + Date.now().toString(36);
+  presets.push({
+    id, name,
+    subject: document.getElementById("template-subject").value,
+    body:    document.getElementById("template-body").value,
+  });
+  _savePresets(presets);
+  localStorage.setItem("tpl_active_id", id);
+  populatePresetDropdown();
+}
+
+function deletePreset() {
+  const presets  = _loadPresets();
+  if (presets.length <= 1) return;
+  const activeId = _activePresetId();
+  const name     = presets.find(p => p.id === activeId)?.name || "this preset";
+  if (!confirm(`Delete "${name}"?`)) return;
+  const remaining = presets.filter(p => p.id !== activeId);
+  _savePresets(remaining);
+  localStorage.setItem("tpl_active_id", remaining[0].id);
+  populatePresetDropdown();
+  applyPreset(remaining[0].id);
+}
+
+function resetActivePreset() {
+  if (!confirm("Reset this preset to the default template?")) return;
+  document.getElementById("template-subject").value = DEFAULT_SUBJECT;
+  document.getElementById("template-body").value    = DEFAULT_BODY;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -489,7 +597,8 @@ async function init() {
     roleEl.appendChild(o);
   });
 
-  // restore saved template
+  // ensure presets are seeded (first run) and restore active template fields
+  _loadPresets();
   const tpl = getTemplate();
   document.getElementById("template-subject").value = tpl.subject;
   document.getElementById("template-body").value    = tpl.body;
@@ -955,6 +1064,7 @@ function openTemplateModal() {
   const tpl = getTemplate();
   document.getElementById("template-subject").value = tpl.subject;
   document.getElementById("template-body").value    = tpl.body;
+  populatePresetDropdown();
   switchTemplateTab("edit");
   openModal("template-overlay");
 }
@@ -1026,19 +1136,6 @@ function renderTemplatePreview() {
   } catch(_) {}
 }
 
-function saveTemplate() {
-  localStorage.setItem("tpl_subject", document.getElementById("template-subject").value);
-  localStorage.setItem("tpl_body",    document.getElementById("template-body").value);
-  closeModal("template-overlay");
-}
-
-function resetTemplate() {
-  if (!confirm("Reset template to default?")) return;
-  localStorage.removeItem("tpl_subject");
-  localStorage.removeItem("tpl_body");
-  document.getElementById("template-subject").value = DEFAULT_SUBJECT;
-  document.getElementById("template-body").value    = DEFAULT_BODY;
-}
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 
