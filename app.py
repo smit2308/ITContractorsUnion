@@ -85,10 +85,11 @@ STAFFING_NAME_FRAGMENTS = [
     "apexon", "softpath", "genesis10", "insight global",
 ]
 
-SENT_FILE    = BASE_DIR / "sent_emails.json"
-CONFIG_FILE  = BASE_DIR / "email_config.json"
-RESUMES_FILE = BASE_DIR / "resumes.json"
-RESUMES_DIR  = BASE_DIR / "resumes"
+SENT_FILE      = BASE_DIR / "sent_emails.json"
+CONFIG_FILE    = BASE_DIR / "email_config.json"
+RESUMES_FILE   = BASE_DIR / "resumes.json"
+RESUMES_DIR    = BASE_DIR / "resumes"
+TEMPLATES_FILE = BASE_DIR / "templates.json"
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -167,6 +168,21 @@ def _load_resumes() -> dict:
 
 def _save_resumes(data: dict):
     with open(RESUMES_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_templates() -> dict:
+    if TEMPLATES_FILE.exists():
+        try:
+            with open(TEMPLATES_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"active_id": "default", "presets": []}
+
+
+def _save_templates(data: dict):
+    with open(TEMPLATES_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 
@@ -442,6 +458,14 @@ def api_config():
         except Exception:
             pass
     return jsonify({"has_password": False})
+
+
+@app.route("/api/templates", methods=["GET", "POST"])
+def api_templates():
+    if request.method == "POST":
+        _save_templates(request.get_json() or {})
+        return jsonify({"status": "saved"})
+    return jsonify(_load_templates())
 
 
 @app.route("/api/resumes")

@@ -469,102 +469,98 @@ const DEFAULT_BODY = `<p>Hi {name},</p>
 <p>— {your_name}<br>
 {your_phone} | {your_linkedin}</p>`;
 
-// ── Preset storage ───────────────────────────────────────────────────────────
+// ── Preset storage (server-backed, in-memory cache) ──────────────────────────
 
-function _loadPresets() {
-  try {
-    const raw = localStorage.getItem("tpl_presets");
-    if (raw) return JSON.parse(raw);
-  } catch(_) {}
+let templatePresets = [];
+let activePresetId  = "default";
+
+async function loadTemplates() {
+  const data = await fetch("/api/templates").then(r => r.json());
+  templatePresets = data.presets || [];
+  activePresetId  = data.active_id || "default";
   // First run — seed with built-in default
-  const seed = [{
-    id: "default", name: "Junior Outreach (Default)",
-    subject: DEFAULT_SUBJECT, body: DEFAULT_BODY, builtin: true,
-  }];
-  localStorage.setItem("tpl_presets", JSON.stringify(seed));
-  localStorage.setItem("tpl_active_id", "default");
-  return seed;
+  if (!templatePresets.length) {
+    templatePresets = [{
+      id: "default", name: "Junior Outreach (Default)",
+      subject: DEFAULT_SUBJECT, body: DEFAULT_BODY, builtin: true,
+    }];
+    activePresetId = "default";
+    await _pushTemplates();
+  }
 }
 
-function _savePresets(presets) {
-  localStorage.setItem("tpl_presets", JSON.stringify(presets));
+async function _pushTemplates() {
+  await fetch("/api/templates", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ presets: templatePresets, active_id: activePresetId }),
+  });
 }
 
-function _activePresetId() {
-  return localStorage.getItem("tpl_active_id") || "default";
-}
-
-function getTemplate() {
-  const presets = _loadPresets();
-  const preset  = presets.find(p => p.id === _activePresetId()) || presets[0];
-  return { subject: preset.subject, body: preset.body };
+function getTemplate() {   // stays synchronous — reads from in-memory cache
+  const preset = templatePresets.find(p => p.id === activePresetId) || templatePresets[0];
+  return preset
+    ? { subject: preset.subject, body: preset.body }
+    : { subject: DEFAULT_SUBJECT, body: DEFAULT_BODY };
 }
 
 // ── Preset UI ─────────────────────────────────────────────────────────────────
 
 function populatePresetDropdown() {
-  const sel     = document.getElementById("tpl-preset-select");
-  const activeId = _activePresetId();
-  const presets = _loadPresets();
+  const sel = document.getElementById("tpl-preset-select");
   sel.innerHTML = "";
-  presets.forEach(p => {
+  templatePresets.forEach(p => {
     const o = document.createElement("option");
     o.value = p.id;
     o.textContent = p.name;
-    if (p.id === activeId) o.selected = true;
+    if (p.id === activePresetId) o.selected = true;
     sel.appendChild(o);
   });
-  // Disable delete when only one preset remains
-  document.getElementById("tpl-delete-btn").disabled = presets.length <= 1;
+  document.getElementById("tpl-delete-btn").disabled = templatePresets.length <= 1;
 }
 
 function applyPreset(id) {
-  const presets = _loadPresets();
-  const preset  = presets.find(p => p.id === id);
+  const preset = templatePresets.find(p => p.id === id);
   if (!preset) return;
-  localStorage.setItem("tpl_active_id", id);
+  activePresetId = id;
   document.getElementById("template-subject").value = preset.subject;
   document.getElementById("template-body").value    = preset.body;
-  document.getElementById("tpl-delete-btn").disabled = presets.length <= 1;
+  document.getElementById("tpl-delete-btn").disabled = templatePresets.length <= 1;
+  _pushTemplates();   // persist active selection
 }
 
-function saveCurrentPreset() {
-  const presets  = _loadPresets();
-  const activeId = _activePresetId();
-  const idx      = presets.findIndex(p => p.id === activeId);
+async function saveCurrentPreset() {
+  const idx = templatePresets.findIndex(p => p.id === activePresetId);
   if (idx === -1) return;
-  presets[idx].subject = document.getElementById("template-subject").value;
-  presets[idx].body    = document.getElementById("template-body").value;
-  _savePresets(presets);
+  templatePresets[idx].subject = document.getElementById("template-subject").value;
+  templatePresets[idx].body    = document.getElementById("template-body").value;
+  await _pushTemplates();
   closeModal("template-overlay");
 }
 
-function saveAsPreset() {
+async function saveAsPreset() {
   const name = prompt("Preset name:")?.trim();
   if (!name) return;
-  const presets = _loadPresets();
-  const id      = "p_" + Date.now().toString(36);
-  presets.push({
+  const id = "p_" + Date.now().toString(36);
+  templatePresets.push({
     id, name,
     subject: document.getElementById("template-subject").value,
     body:    document.getElementById("template-body").value,
   });
-  _savePresets(presets);
-  localStorage.setItem("tpl_active_id", id);
+  activePresetId = id;
+  await _pushTemplates();
   populatePresetDropdown();
 }
 
-function deletePreset() {
-  const presets  = _loadPresets();
-  if (presets.length <= 1) return;
-  const activeId = _activePresetId();
-  const name     = presets.find(p => p.id === activeId)?.name || "this preset";
+async function deletePreset() {
+  if (templatePresets.length <= 1) return;
+  const name = templatePresets.find(p => p.id === activePresetId)?.name || "this preset";
   if (!confirm(`Delete "${name}"?`)) return;
-  const remaining = presets.filter(p => p.id !== activeId);
-  _savePresets(remaining);
-  localStorage.setItem("tpl_active_id", remaining[0].id);
+  templatePresets = templatePresets.filter(p => p.id !== activePresetId);
+  activePresetId  = templatePresets[0].id;
+  await _pushTemplates();
   populatePresetDropdown();
-  applyPreset(remaining[0].id);
+  applyPreset(activePresetId);
 }
 
 function resetActivePreset() {
@@ -597,8 +593,8 @@ async function init() {
     roleEl.appendChild(o);
   });
 
-  // ensure presets are seeded (first run) and restore active template fields
-  _loadPresets();
+  // load templates from server (seeds default on first run)
+  await loadTemplates();
   const tpl = getTemplate();
   document.getElementById("template-subject").value = tpl.subject;
   document.getElementById("template-body").value    = tpl.body;

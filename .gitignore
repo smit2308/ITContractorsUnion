@@ -2,5 +2,6 @@ email_config.json
 sent_emails.json
 resumes.json
 resumes/
+templates.json
 __pycache__/
 *.pyc
